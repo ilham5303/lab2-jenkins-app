@@ -11,7 +11,7 @@ pipeline {
     // Explanation: Define environment variables that will be available throughout the pipeline.
     environment {
         // Replace YOUR_DOCKERHUB_USERNAME with your actual Docker Hub username
-        DOCKERHUB_USERNAME = 'YOUR_DOCKERHUB_USERNAME'
+        DOCKERHUB_USERNAME = 'ilhamsbibih'
         IMAGE_NAME = "${DOCKERHUB_USERNAME}/jenkins-python-app"
         // BUILD_NUMBER is a built-in Jenkins environment variable
         IMAGE_TAG = "${env.BUILD_NUMBER}"
