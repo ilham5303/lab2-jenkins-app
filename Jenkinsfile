@@ -17,34 +17,32 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                echo "--- Building ${IMAGE_NAME}:${IMAGE_TAG} ---"
                 sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:${LATEST_TAG} ."
             }
         }
 
-        // Test BEFORE push, and test inside the image (where Flask is installed)
         stage('Test Application') {
             steps {
-                sh '''
-                    docker run -d --name test-app-$BUILD_NUMBER $IMAGE_NAME:$IMAGE_TAG
-                    sleep 5
-                    docker exec test-app-$BUILD_NUMBER python -c "import urllib.request; r = urllib.request.urlopen('http://localhost:5000'); print('Status:', r.status)"
-                '''
+                sh "docker run -d --name test-app-${BUILD_NUMBER} ${IMAGE_NAME}:${IMAGE_TAG}"
+                sh "sleep 5"
+                sh "docker exec test-app-${BUILD_NUMBER} wget -q -O /dev/null http://localhost:5000"
+                echo "Test passed: app returned a page"
             }
             post {
                 always {
-                    sh 'docker rm -f test-app-$BUILD_NUMBER || true'
+                    sh "docker rm -f test-app-${BUILD_NUMBER} || true"
                 }
             }
         }
 
         stage('Push Docker Image') {
             steps {
-                withCredentials([usernamePassword(credentialsId: 'dockerhub-credenti                withCredentials(                     le: 'DOCKER_USERNAME',
-                                 passwordVariable: 'DOCKER_PASSWORD')]) {
-                    // Single quotes: the shell reads the secret, not Groovy
-                                                                                                  din'                                  sh ${IMAGE_NAME}:${IMAGE_TAG}"
-                                                                                               }
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-credentials', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                    sh 'echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin'
+                    sh "docker push ${IMAGE_NAME}:${IMAGE_TAG}"
+                    sh "docker push ${IMAGE_NAME}:${LATEST_TAG}"
+                }
+            }
         }
     }
 
