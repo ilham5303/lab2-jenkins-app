@@ -1,9 +1,5 @@
-pipeline {
-    agent {
-        label 'docker-agent'
-    }
-    // ... keep the rest of your stages exactly as they were
-}
+]633;E;{ printf 'pipeline {\\n    agent any\\n'\x3b tail -n +7 Jenkinsfile\x3b } > Jenkinsfile.new && mv Jenkinsfile.new Jenkinsfile;f07a6b8e-a90e-4ae4-9058-8389a53db725]633;Cpipeline {
+    agent any
 
     environment {
         DOCKERHUB_USERNAME = 'ilhamsbibih'
