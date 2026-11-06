@@ -1,5 +1,9 @@
 pipeline {
-    agent any
+    agent {
+        label 'docker-agent'
+    }
+    // ... keep the rest of your stages exactly as they were
+}
 
     environment {
         DOCKERHUB_USERNAME = 'ilhamsbibih'
