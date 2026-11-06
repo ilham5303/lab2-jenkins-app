@@ -1,8 +1,8 @@
-]633;E;{ printf 'pipeline {\\n    agent any\\n'\x3b tail -n +7 Jenkinsfile\x3b } > Jenkinsfile.new && mv Jenkinsfile.new Jenkinsfile;f07a6b8e-a90e-4ae4-9058-8389a53db725]633;Cpipeline {
+pipeline {
     agent any
 
     environment {
-        DOCKERHUB_USERNAME = 'ilhamsbibih'
+        DOCKERHUB_USERNAME = 'ilham'
         IMAGE_NAME = "${DOCKERHUB_USERNAME}/jenkins-python-app"
         IMAGE_TAG  = "${env.BUILD_NUMBER}"
         LATEST_TAG = "latest"
