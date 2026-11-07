@@ -1,10 +1,7 @@
 pipeline {
     agent {
-        label 'docker-agent' // Use the label we assigned to our agent
+        label 'docker-agent'
     }
-    // ... rest of your Jenkinsfile
-}
-
 
     environment {
         DOCKERHUB_USERNAME = 'ilhamsbibih'
@@ -57,3 +54,4 @@ pipeline {
         failure { echo "Build failed. Please check logs." }
     }
 }
+EOF
