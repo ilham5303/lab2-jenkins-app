@@ -54,4 +54,3 @@ pipeline {
         failure { echo "Build failed. Please check logs." }
     }
 }
-EOF
