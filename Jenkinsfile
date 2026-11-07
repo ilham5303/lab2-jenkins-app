@@ -1,5 +1,10 @@
 pipeline {
-    agent any
+    agent {
+        label 'docker-agent' // Use the label we assigned to our agent
+    }
+    // ... rest of your Jenkinsfile
+}
+
 
     environment {
         DOCKERHUB_USERNAME = 'ilhamsbibih'
