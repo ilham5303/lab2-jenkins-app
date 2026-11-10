@@ -1,7 +1,7 @@
 pipeline {
     agent { label 'docker-agent' }
 
-    environment {
+       environment {
         AWS_REGION       = 'us-east-1'
         AWS_ACCOUNT_ID   = '822826627239'
         ECR_REGISTRY     = '822826627239.dkr.ecr.us-east-1.amazonaws.com'
@@ -9,8 +9,8 @@ pipeline {
         IMAGE_TAG        = "${env.BUILD_NUMBER}"
         EKS_CLUSTER_NAME = 'my-k8s-cluster'
         K8S_NAMESPACE    = 'default'
-        APP_PORT         = '80'                      // was '5000'
-          image: nginx:latest                // was: image: $ECR_REPO_URI:$IMAGE_TAG
+        APP_PORT         = '80'
+        DEPLOY_IMAGE     = 'nginx:latest'
     }
 
     stages {
@@ -70,7 +70,7 @@ spec:
     spec:
       containers:
         - name: flask-app
-          image: $ECR_REPO_URI:$IMAGE_TAG
+          image: $DEPLOY_IMAGE
           ports:
             - containerPort: $APP_PORT
 ---
