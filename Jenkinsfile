@@ -9,7 +9,8 @@ pipeline {
         IMAGE_TAG        = "${env.BUILD_NUMBER}"
         EKS_CLUSTER_NAME = 'my-k8s-cluster'
         K8S_NAMESPACE    = 'default'
-        APP_PORT         = '5000'
+        APP_PORT         = '80'                      // was '5000'
+          image: nginx:latest                // was: image: $ECR_REPO_URI:$IMAGE_TAG
     }
 
     stages {
