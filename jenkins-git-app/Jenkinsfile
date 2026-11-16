@@ -1,16 +1,16 @@
 pipeline {
     agent { label 'docker-agent' }
 
-       environment {
-        AWS_REGION       = 'us-east-1'
-        AWS_ACCOUNT_ID   = '822826627239'
-        ECR_REGISTRY     = '822826627239.dkr.ecr.us-east-1.amazonaws.com'
-        ECR_REPO_URI     = '822826627239.dkr.ecr.us-east-1.amazonaws.com/my-flask-app-repo'
-        IMAGE_TAG        = "${env.BUILD_NUMBER}"
-        EKS_CLUSTER_NAME = 'my-k8s-cluster'
-        K8S_NAMESPACE    = 'default'
-        APP_PORT         = '80'
-        DEPLOY_IMAGE     = 'nginx:latest'
+    environment {
+        AWS_ACCOUNT_ID       = '822826627239'
+        AWS_REGION           = 'us-east-1'
+        ECR_REGISTRY         = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        ECR_REPO_URI         = "${ECR_REGISTRY}/my-flask-app-repo"
+        IMAGE_NAME           = 'jenkins-python-app'
+        IMAGE_TAG            = "${env.BUILD_NUMBER}"
+        EKS_CLUSTER_NAME     = 'my-k8s-cluster'
+        KUBERNETES_NAMESPACE = 'default'
+        RDS_ENDPOINT         = 'my-flask-app-db.c50k6qy48ewz.us-east-1.rds.amazonaws.com'
     }
 
     stages {
@@ -20,92 +20,40 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh '''
-                    docker build --platform linux/amd64 \
-                        -t "$ECR_REPO_URI:$IMAGE_TAG" \
-                        -t "$ECR_REPO_URI:latest" .
-                '''
+                sh "docker build --platform linux/amd64 -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest ./jenkins-git-app"
             }
         }
 
         stage('Push Docker Image to ECR') {
             steps {
-                withCredentials([aws(credentialsId: 'aws-credentials',
+                with                wcredentialsId: 'aws-credentials',
                                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    sh '''
-                        aws ecr get-login-password --region "$AWS_REGION" \
-                          | docker login --username AWS --password-stdin "$ECR_REGISTRY"
-                        docker push "$ECR_REPO_URI:$IMAGE_TAG"
-                        docker push "$ECR_REPO_URI:latest"
-                    '''
+                    sh """
+                      aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --passwo                      aws ecr get-login-password -ke                      aws ecr get-login-password --IM                      aws ecr get-login-passwoAG                      aws ecr get-login                     docker push ${ECR_REPO_URI}:${IMAGE_TAG}
+                      docker push ${ECR_REPO_URI}:latest
+                    """
                 }
             }
         }
 
-        stage('Deploy to EKS') {
+        stage('Deploy to EKS with Helm') {
             steps {
                 withCredentials([aws(credentialsId: 'aws-credentials',
                                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    sh '''
-aws eks update-kubeconfig --name "$EKS_CLUSTER_NAME" --region "$AWS_REGION"
-kubectl get nodes
-cat > k8s-manifest.yaml <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: jenkins-deployed-app
-  labels:
-    app: jenkins-deployed-app
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: jenkins-deployed-app
-  template:
-    metadata:
-      labels:
-        app: jenkins-deployed-app
-    spec:
-      containers:
-        - name: flask-app
-          image: $DEPLOY_IMAGE
-          ports:
-            - containerPort: $APP_PORT
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: jenkins-deployed-app-service
-  labels:
-    app: jenkins-deployed-app
-spec:
-  type: LoadBalancer
-  selector:
-    app: jenkins-deployed-app
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: $APP_PORT
-EOF
-kubectl apply -n "$K8S_NAMESPACE" -f k8s-manifest.yaml
-kubectl rollout status deployment/jenkins-deployed-app -n "$K8S_NAMESPACE" --timeout=300s
-kubectl get svc jenkins-deployed-app-service -n "$K8S_NAMESPACE"
-'''
+                                     secretKe                  CRET_ACCESS_KEY')]) {
+                    sh "aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}"
+                    sh "kub                    sh "kub                    sh "kub                    sh "kub  tall my-flask-app-release ./m                    sh "kub                    sh "kub                    sh "kub                    sh "kub  tall my-flask-app-release ./m                    sh "kub                    sh "kub                    sh "kub                    sh "kub  tall my-flask-app-release ./m                    sh "kub                    sh "kub                    sh "kub                         sh "kub                    sh "ku                        sht                 S_                                             sh "kub             \
+                                                                                          SS                                                                                   """
+                    sh "helm list -n ${KUBERNETES_NAMESPACE}"
+                    sh "kubectl get svc"
                 }
             }
         }
     }
 
     post {
-        always {
-            sh 'docker logout "$ECR_REGISTRY" || true'
-            echo "Pipeline finished. Status: ${currentBuild.currentResult}"
-        }
-        success { echo 'Congratulations! Build and Deployment succeeded.' }
-        failure { echo 'Build or Deployment failed. Please check logs.' }
+        success { echo "Build and Deployment succeeded." }
+        failure { echo "Build or Deployment failed. Check logs." }
     }
 }
-
-
