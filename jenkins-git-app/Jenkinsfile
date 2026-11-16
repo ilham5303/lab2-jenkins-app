@@ -4,8 +4,8 @@ pipeline {
     environment {
         AWS_ACCOUNT_ID       = '822826627239'
         AWS_REGION           = 'us-east-1'
-        ECR_REGISTRY         = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-        ECR_REPO_URI         = "${ECR_REGISTRY}/my-flask-app-repo"
+        ECR_REGISTRY         = "822826627239.dkr.ecr.us-east-1.amazonaws.com"
+        ECR_REPO_URI         = "822826627239.dkr.ecr.us-east-1.amazonaws.com/my-flask-app-repo"
         IMAGE_NAME           = 'jenkins-python-app'
         IMAGE_TAG            = "${env.BUILD_NUMBER}"
         EKS_CLUSTER_NAME     = 'my-k8s-cluster'
@@ -15,7 +15,9 @@ pipeline {
 
     stages {
         stage('Checkout') {
-            steps { checkout scm }
+            steps {
+                checkout scm
+            }
         }
 
         stage('Build Docker Image') {
@@ -26,25 +28,22 @@ pipeline {
 
         stage('Push Docker Image to ECR') {
             steps {
-                with                wcredentialsId: 'aws-credentials',
-                                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                    sh """
-                      aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --passwo                      aws ecr get-login-password -ke                      aws ecr get-login-password --IM                      aws ecr get-login-passwoAG                      aws ecr get-login                     docker push ${ECR_REPO_URI}:${IMAGE_TAG}
-                      docker push ${ECR_REPO_URI}:latest
-                    """
+                withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
+                    sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REPO_URI}:${IMAGE_TAG}"
+                    sh "docker tag ${IMAGE_NAME}:latest ${ECR_REPO_URI}:latest"
+                    sh "docker push ${ECR_REPO_URI}:${IMAGE_TAG}"
+                    sh "docker push ${ECR_REPO_URI}:latest"
                 }
             }
         }
 
         stage('Deploy to EKS with Helm') {
             steps {
-                withCredentials([aws(credentialsId: 'aws-credentials',
-                                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                     secretKe                  CRET_ACCESS_KEY')]) {
+                withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
                     sh "aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}"
-                    sh "kub                    sh "kub                    sh "kub                    sh "kub  tall my-flask-app-release ./m                    sh "kub                    sh "kub                    sh "kub                    sh "kub  tall my-flask-app-release ./m                    sh "kub                    sh "kub                    sh "kub                    sh "kub  tall my-flask-app-release ./m                    sh "kub                    sh "kub                    sh "kub                         sh "kub                    sh "ku                        sht                 S_                                             sh "kub             \
-                                                                                          SS                                                                                   """
+                    sh "kubectl get nodes"
+                    sh "helm upgrade --install my-flask-app-release ./my-flask-chart --namespace ${KUBERNETES_NAMESPACE} --atomic --wait --timeout 5m --set image.repository=${ECR_REPO_URI} --set image.tag=${IMAGE_TAG} --set service.type=LoadBalancer --set service.port=80 --set service.targetPort=5000 --set env.DB_HOST=${RDS_ENDPOINT} --set env.DB_NAME=mydatabase --set env.DB_USER=myuser --set env.DB_PASSWORD=mypassword --set replicaCount=2"
                     sh "helm list -n ${KUBERNETES_NAMESPACE}"
                     sh "kubectl get svc"
                 }
@@ -53,7 +52,11 @@ pipeline {
     }
 
     post {
-        success { echo "Build and Deployment succeeded." }
-        failure { echo "Build or Deployment failed. Check logs." }
+        success {
+            echo "Build and Deployment succeeded."
+        }
+        failure {
+            echo "Build or Deployment failed. Check logs."
+        }
     }
 }
