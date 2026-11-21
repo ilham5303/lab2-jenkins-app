@@ -1,39 +1,83 @@
 pipeline {
-    agent { label 'docker-agent' }
+    agent {
+        label 'docker-agent' // Docker, AWS CLI, kubectl, Helm, Terraform
+    }
 
     environment {
-        AWS_ACCOUNT_ID       = '822826627239'
-        AWS_REGION           = 'us-east-1'
-        ECR_REGISTRY         = "822826627239.dkr.ecr.us-east-1.amazonaws.com"
-        ECR_REPO_URI         = "822826627239.dkr.ecr.us-east-1.amazonaws.com/my-flask-app-repo"
-        IMAGE_NAME           = 'jenkins-python-app'
-        IMAGE_TAG            = "${env.BUILD_NUMBER}"
-        EKS_CLUSTER_NAME     = 'my-k8s-cluster'
+        IMAGE_NAME = 'jenkins-python-app'
+        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        LATEST_TAG = 'latest'
+
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = '822826627239'
+        ECR_REGISTRY = '822826627239.dkr.ecr.us-east-1.amazonaws.com'
+        ECR_REPO_URI = '822826627239.dkr.ecr.us-east-1.amazonaws.com/my-flask-app-repo'
+
+        EKS_CLUSTER_NAME = 'my-k8s-cluster'
         KUBERNETES_NAMESPACE = 'default'
-        RDS_ENDPOINT         = 'my-flask-app-db.c50k6qy48ewz.us-east-1.rds.amazonaws.com'
+        RDS_ENDPOINT = 'my-flask-app-db.c50k6qy48ewz.us-east-1.rds.amazonaws.com'
+
+        // Terraform infra repo and remote state
+        TERRAFORM_INFRA_REPO = 'https://github.com/ilham5303/jenkins-terraform-infra.git'
+        TERRAFORM_STATE_BUCKET = 'jenkins-terraform-state-822826627239'
+        TERRAFORM_STATE_KEY = 's3-bucket-infra/terraform.tfstate'
+        TERRAFORM_LOCK_TABLE = 'terraform-lock-table'
+
+        // App version S3 bucket (from Terraform infra)
+        APP_VERSION_S3_BUCKET = 'app-version-bucket-822826627239'
+        APP_VERSION_FILE_KEY = 'current-app-version.txt'
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout Application Code') {
             steps {
                 checkout scm
             }
         }
 
+        stage('Checkout Terraform Infra Code') {
+            steps {
+                // Checked out into its own sub-folder so the app code is not overwritten
+                dir('jenkins-terraform-infra-repo') {
+                    git branch: 'main', url: "${TERRAFORM_INFRA_REPO}", changelog: false, poll: false
+                }
+            }
+        }
+
         stage('Build Docker Image') {
             steps {
-                sh "docker build --platform linux/amd64 -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:latest ./jenkins-git-app"
+                echo "--- Building Docker Image: ${IMAGE_NAME}:${IMAGE_TAG} ---"
+                sh "docker build --platform linux/amd64 -t ${IMAGE_NAME}:${IMAGE_TAG} -t ${IMAGE_NAME}:${LATEST_TAG} ./jenkins-git-app"
             }
         }
 
         stage('Push Docker Image to ECR') {
             steps {
                 withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    echo "--- Logging in to AWS ECR ---"
                     sh "aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}"
+                    echo "--- Tagging and pushing image ---"
                     sh "docker tag ${IMAGE_NAME}:${IMAGE_TAG} ${ECR_REPO_URI}:${IMAGE_TAG}"
-                    sh "docker tag ${IMAGE_NAME}:latest ${ECR_REPO_URI}:latest"
+                    sh "docker tag ${IMAGE_NAME}:${LATEST_TAG} ${ECR_REPO_URI}:${LATEST_TAG}"
                     sh "docker push ${ECR_REPO_URI}:${IMAGE_TAG}"
-                    sh "docker push ${ECR_REPO_URI}:latest"
+                    sh "docker push ${ECR_REPO_URI}:${LATEST_TAG}"
+                    echo "--- Docker Image Push to ECR Complete ---"
+                }
+            }
+        }
+
+        stage('Update App Version in Infra') {
+            steps {
+                withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    echo "--- Updating App Version in Infrastructure (Terraform) ---"
+                    dir('jenkins-terraform-infra-repo') {
+                        sh "pwd"
+                        sh "terraform init -input=false -backend-config=\"bucket=${TERRAFORM_STATE_BUCKET}\" -backend-config=\"key=${TERRAFORM_STATE_KEY}\" -backend-config=\"region=${AWS_REGION}\" -backend-config=\"encrypt=true\" -backend-config=\"dynamodb_table=${TERRAFORM_LOCK_TABLE}\""
+                        sh "terraform plan -input=false -out=tfplan.out -var=\"aws_region=${AWS_REGION}\" -var=\"app_version_content=${IMAGE_TAG}\""
+                        sh "terraform apply -input=false -auto-approve tfplan.out"
+                    }
+                    sh "aws s3 cp s3://${APP_VERSION_S3_BUCKET}/${APP_VERSION_FILE_KEY} -"
+                    echo "--- App Version Infra Update Complete ---"
                 }
             }
         }
@@ -41,23 +85,29 @@ pipeline {
         stage('Deploy to EKS with Helm') {
             steps {
                 withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    echo "--- Configuring kubectl for EKS ---"
                     sh "aws eks update-kubeconfig --name ${EKS_CLUSTER_NAME} --region ${AWS_REGION}"
                     sh "kubectl get nodes"
+                    echo "--- Deploying Helm Chart to EKS ---"
                     sh "helm upgrade --install my-flask-app-release ./my-flask-chart --namespace ${KUBERNETES_NAMESPACE} --atomic --wait --timeout 5m --set image.repository=${ECR_REPO_URI} --set image.tag=${IMAGE_TAG} --set service.type=LoadBalancer --set service.port=80 --set service.targetPort=5000 --set env.DB_HOST=${RDS_ENDPOINT} --set env.DB_NAME=mydatabase --set env.DB_USER=myuser --set env.DB_PASSWORD=mypassword --set replicaCount=2"
                     sh "helm list -n ${KUBERNETES_NAMESPACE}"
                     sh "kubectl get svc"
+                    echo "--- Helm Deployment to EKS Complete ---"
                 }
             }
         }
     }
 
     post {
+        always {
+            echo "Pipeline finished. Status: ${currentBuild.currentResult}"
+        }
         success {
-            echo "Build and Deployment succeeded."
+            echo "Congratulations! Full Stack Deployment succeeded."
         }
         failure {
-            echo "Build or Deployment failed. Check logs."
+            echo "Full Stack Deployment failed. Please check logs."
         }
     }
 }
-
+       
